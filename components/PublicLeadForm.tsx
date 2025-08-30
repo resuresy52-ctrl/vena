@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Lead, LeadStatus, ContactChannel, Profile, PublicLeadFormProps } from '../types';
 import { cleanPhoneNumber } from '../constants';
+import { supabase } from '../lib/supabase';
 
 const PublicLeadForm: React.FC<PublicLeadFormProps> = ({ setLeads, userProfile, showNotification }) => {
     const [formState, setFormState] = useState({
@@ -23,27 +24,50 @@ const PublicLeadForm: React.FC<PublicLeadFormProps> = ({ setLeads, userProfile, 
         e.preventDefault();
         setIsSubmitting(true);
 
-        const notes = `Jenis Acara: ${formState.eventType}\nTanggal Acara: ${new Date(formState.eventDate).toLocaleDateString('id-ID')}\nLokasi Acara: ${formState.eventLocation}`;
+        const submitLead = async () => {
+            try {
+                const notes = `Jenis Acara: ${formState.eventType}\nTanggal Acara: ${new Date(formState.eventDate).toLocaleDateString('id-ID')}\nLokasi Acara: ${formState.eventLocation}`;
 
-        const newLead: Lead = {
-            id: crypto.randomUUID(),
-            name: formState.name,
-            whatsapp: formState.whatsapp,
-            contactChannel: ContactChannel.WEBSITE,
-            location: formState.eventLocation,
-            status: LeadStatus.DISCUSSION,
-            date: new Date().toISOString(),
-            notes: notes
+                const { data, error } = await supabase
+                    .from('leads')
+                    .insert({
+                        name: formState.name,
+                        whatsapp: formState.whatsapp,
+                        contact_channel: ContactChannel.WEBSITE,
+                        location: formState.eventLocation,
+                        status: LeadStatus.DISCUSSION,
+                        date: new Date().toISOString().split('T')[0],
+                        notes: notes
+                    })
+                    .select()
+                    .single();
+
+                if (error) throw error;
+
+                if (data) {
+                    const newLead: Lead = {
+                        id: data.id,
+                        name: data.name,
+                        whatsapp: data.whatsapp || undefined,
+                        contactChannel: data.contact_channel as any,
+                        location: data.location,
+                        status: data.status as any,
+                        date: data.date,
+                        notes: data.notes || undefined
+                    };
+                    setLeads(prev => [newLead, ...prev]);
+                }
+
+                setIsSubmitted(true);
+            } catch (error) {
+                console.error('Error submitting lead:', error);
+                alert('Terjadi kesalahan saat mengirim formulir. Silakan coba lagi.');
+            } finally {
+                setIsSubmitting(false);
+            }
         };
 
-        // Simulate API call
-        setTimeout(() => {
-            setLeads(prev => [newLead, ...prev]);
-            setIsSubmitting(false);
-            setIsSubmitted(true);
-            // This notification won't be visible on the public page, but it's good practice
-            showNotification('Prospek baru diterima dari formulir web.');
-        }, 1000);
+        submitLead();
     };
 
     if (isSubmitted) {

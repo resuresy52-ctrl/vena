@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ClientFeedback, SatisfactionLevel } from '../types';
 import { StarIcon } from '../constants';
+import { supabase } from '../lib/supabase';
 
 interface PublicFeedbackFormProps {
     setClientFeedback: React.Dispatch<React.SetStateAction<ClientFeedback[]>>;
@@ -39,20 +40,44 @@ const PublicFeedbackForm: React.FC<PublicFeedbackFormProps> = ({ setClientFeedba
         }
         setIsSubmitting(true);
 
-        const newFeedback: ClientFeedback = {
-            id: crypto.randomUUID(),
-            clientName: formState.clientName,
-            rating: formState.rating,
-            satisfaction: getSatisfactionFromRating(formState.rating),
-            feedback: formState.feedback,
-            date: new Date().toISOString(),
+        const submitFeedback = async () => {
+            try {
+                const { data, error } = await supabase
+                    .from('client_feedback')
+                    .insert({
+                        client_name: formState.clientName,
+                        rating: formState.rating,
+                        satisfaction: getSatisfactionFromRating(formState.rating),
+                        feedback: formState.feedback,
+                        date: new Date().toISOString().split('T')[0],
+                    })
+                    .select()
+                    .single();
+
+                if (error) throw error;
+
+                if (data) {
+                    const newFeedback: ClientFeedback = {
+                        id: data.id,
+                        clientName: data.client_name,
+                        rating: data.rating,
+                        satisfaction: data.satisfaction as any,
+                        feedback: data.feedback,
+                        date: data.date,
+                    };
+                    setClientFeedback(prev => [newFeedback, ...prev]);
+                }
+
+                setIsSubmitted(true);
+            } catch (error) {
+                console.error('Error submitting feedback:', error);
+                alert('Terjadi kesalahan saat mengirim masukan. Silakan coba lagi.');
+            } finally {
+                setIsSubmitting(false);
+            }
         };
 
-        setTimeout(() => {
-            setClientFeedback(prev => [newFeedback, ...prev].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-            setIsSubmitting(false);
-            setIsSubmitted(true);
-        }, 1000);
+        submitFeedback();
     };
 
     if (isSubmitted) {
