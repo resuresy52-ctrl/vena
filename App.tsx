@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { ViewType, Client, Project, TeamMember, Transaction, Package, AddOn, TeamProjectPayment, Profile, FinancialPocket, TeamPaymentRecord, Lead, RewardLedgerEntry, User, Card, Asset, ClientFeedback, Contract, RevisionStatus, NavigationAction, Notification, SocialMediaPost, PromoCode, SOP, CardType, PocketType, VendorData } from './types';
 import { MOCK_USERS, DEFAULT_USER_PROFILE, MOCK_DATA, HomeIcon, FolderKanbanIcon, UsersIcon, DollarSignIcon, PlusIcon, lightenColor, darkenColor, hexToHsl } from './constants';
+import { useSupabaseData } from './hooks/useSupabaseData';
+import { supabase } from './lib/supabase';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import { Leads } from './components/Leads';
@@ -205,29 +207,54 @@ const App: React.FC = () => {
   const [route, setRoute] = useState(window.location.hash || '#/home');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
+  // --- Supabase Data Hook ---
+  const {
+    profile,
+    clients,
+    projects,
+    teamMembers,
+    transactions,
+    cards,
+    pockets,
+    leads,
+    packages,
+    addOns,
+    assets,
+    contracts,
+    clientFeedback,
+    notifications,
+    socialMediaPosts,
+    promoCodes,
+    sops,
+    teamProjectPayments,
+    teamPaymentRecords,
+    rewardLedgerEntries,
+    setProfile,
+    setClients,
+    setProjects,
+    setTeamMembers,
+    setTransactions,
+    setCards,
+    setPockets,
+    setLeads,
+    setPackages,
+    setAddOns,
+    setAssets,
+    setContracts,
+    setClientFeedback,
+    setNotifications,
+    setSocialMediaPosts,
+    setPromoCodes,
+    setSops,
+    setTeamProjectPayments,
+    setTeamPaymentRecords,
+    setRewardLedgerEntries,
+    isLoading,
+    error,
+  } = useSupabaseData();
+
   // --- State Initialization with Persistence ---
   const [users, setUsers] = useState<User[]>(() => JSON.parse(JSON.stringify(MOCK_USERS)));
-  
-  const [clients, setClients] = usePersistentState<Client[]>('vena-clients', JSON.parse(JSON.stringify(MOCK_DATA.clients)));
-  const [projects, setProjects] = usePersistentState<Project[]>('vena-projects', JSON.parse(JSON.stringify(MOCK_DATA.projects)));
-  const [teamMembers, setTeamMembers] = usePersistentState<TeamMember[]>('vena-teamMembers', JSON.parse(JSON.stringify(MOCK_DATA.teamMembers)));
-  const [transactions, setTransactions] = usePersistentState<Transaction[]>('vena-transactions', JSON.parse(JSON.stringify(MOCK_DATA.transactions)));
-  const [teamProjectPayments, setTeamProjectPayments] = usePersistentState<TeamProjectPayment[]>('vena-teamProjectPayments', JSON.parse(JSON.stringify(MOCK_DATA.teamProjectPayments)));
-  const [teamPaymentRecords, setTeamPaymentRecords] = usePersistentState<TeamPaymentRecord[]>('vena-teamPaymentRecords', JSON.parse(JSON.stringify(MOCK_DATA.teamPaymentRecords)));
-  const [pockets, setPockets] = usePersistentState<FinancialPocket[]>('vena-pockets', JSON.parse(JSON.stringify(MOCK_DATA.pockets)));
-  const [profile, setProfile] = usePersistentState<Profile>('vena-profile', JSON.parse(JSON.stringify(MOCK_DATA.profile)));
-  const [leads, setLeads] = usePersistentState<Lead[]>('vena-leads', JSON.parse(JSON.stringify(MOCK_DATA.leads)));
-  const [rewardLedgerEntries, setRewardLedgerEntries] = usePersistentState<RewardLedgerEntry[]>('vena-rewardLedgerEntries', JSON.parse(JSON.stringify(MOCK_DATA.rewardLedgerEntries)));
-  const [cards, setCards] = usePersistentState<Card[]>('vena-cards', JSON.parse(JSON.stringify(MOCK_DATA.cards)));
-  const [assets, setAssets] = usePersistentState<Asset[]>('vena-assets', JSON.parse(JSON.stringify(MOCK_DATA.assets)));
-  const [contracts, setContracts] = usePersistentState<Contract[]>('vena-contracts', JSON.parse(JSON.stringify(MOCK_DATA.contracts)));
-  const [clientFeedback, setClientFeedback] = usePersistentState<ClientFeedback[]>('vena-clientFeedback', JSON.parse(JSON.stringify(MOCK_DATA.clientFeedback)));
-  const [notifications, setNotifications] = usePersistentState<Notification[]>('vena-notifications', JSON.parse(JSON.stringify(MOCK_DATA.notifications)));
-  const [socialMediaPosts, setSocialMediaPosts] = usePersistentState<SocialMediaPost[]>('vena-socialMediaPosts', JSON.parse(JSON.stringify(MOCK_DATA.socialMediaPosts)));
-  const [promoCodes, setPromoCodes] = usePersistentState<PromoCode[]>('vena-promoCodes', JSON.parse(JSON.stringify(MOCK_DATA.promoCodes)));
-  const [sops, setSops] = usePersistentState<SOP[]>('vena-sops', JSON.parse(JSON.stringify(MOCK_DATA.sops)));
-  const [packages, setPackages] = usePersistentState<Package[]>('vena-packages', JSON.parse(JSON.stringify(MOCK_DATA.packages)));
-  const [addOns, setAddOns] = usePersistentState<AddOn[]>('vena-addOns', JSON.parse(JSON.stringify(MOCK_DATA.addOns)));
 
 
     // --- [NEW] MOCK EMAIL SERVICE ---
@@ -244,20 +271,44 @@ const App: React.FC = () => {
     };
 
     // --- [NEW] CENTRALIZED NOTIFICATION HANDLER ---
-    const addNotification = (newNotificationData: Omit<Notification, 'id' | 'timestamp' | 'isRead'>) => {
-        const newNotification: Notification = {
-            id: crypto.randomUUID(),
-            timestamp: new Date().toISOString(),
-            isRead: false,
-            ...newNotificationData
-        };
+    const addNotification = async (newNotificationData: Omit<Notification, 'id' | 'timestamp' | 'isRead'>) => {
+        try {
+            const { data, error } = await supabase
+                .from('notifications')
+                .insert({
+                    title: newNotificationData.title,
+                    message: newNotificationData.message,
+                    icon: newNotificationData.icon,
+                    link_view: newNotificationData.link?.view,
+                    link_action: newNotificationData.link?.action,
+                })
+                .select()
+                .single();
 
-        setNotifications(prev => [newNotification, ...prev]);
+            if (error) throw error;
 
-        if (profile.email) {
-            sendEmailNotification(profile.email, newNotification);
-        } else {
-            console.warn('[SIMULASI EMAIL] Gagal: Alamat email vendor tidak diatur di Pengaturan Profil.');
+            if (data) {
+                const newNotification: Notification = {
+                    id: data.id,
+                    title: data.title,
+                    message: data.message,
+                    timestamp: data.timestamp,
+                    isRead: data.is_read,
+                    icon: data.icon as any,
+                    link: data.link_view ? {
+                        view: data.link_view as any,
+                        action: data.link_action as any,
+                    } : undefined,
+                };
+
+                setNotifications(prev => [newNotification, ...prev]);
+
+                if (profile?.email) {
+                    sendEmailNotification(profile.email, newNotification);
+                }
+            }
+        } catch (error) {
+            console.error('Error adding notification:', error);
         }
     };
 
@@ -302,7 +353,7 @@ const App: React.FC = () => {
         document.body.classList.toggle('public-page-body', isPublicRoute);
 
         if (isPublicRoute) {
-            const brandColor = profile.brandColor || '#3b82f6';
+            const brandColor = profile?.brandColor || '#3b82f6';
             
             if (styleElement) {
                 const hoverColor = darkenColor(brandColor, 10);
@@ -319,7 +370,7 @@ const App: React.FC = () => {
             styleElement.innerHTML = '';
         }
 
-    }, [route, profile.brandColor]);
+    }, [route, profile?.brandColor]);
 
   const showNotification = (message: string, duration: number = 3000) => {
     setNotification(message);
@@ -349,7 +400,19 @@ const App: React.FC = () => {
   };
   
   const handleMarkAllAsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+    const updateNotifications = async () => {
+      try {
+        await supabase
+          .from('notifications')
+          .update({ is_read: true })
+          .eq('is_read', false);
+        
+        setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+      } catch (error) {
+        console.error('Error marking notifications as read:', error);
+      }
+    };
+    updateNotifications();
   };
 
   const handleNavigation = (view: ViewType, action?: NavigationAction, notificationId?: string) => {
@@ -382,7 +445,19 @@ const App: React.FC = () => {
     setIsSidebarOpen(false); // Close sidebar on navigation
     setIsSearchOpen(false); // Close search on navigation
     if (notificationId) {
-        handleMarkAsRead(notificationId);
+        const markAsRead = async () => {
+          try {
+            await supabase
+              .from('notifications')
+              .update({ is_read: true })
+              .eq('id', notificationId);
+            
+            handleMarkAsRead(notificationId);
+          } catch (error) {
+            console.error('Error marking notification as read:', error);
+          }
+        };
+        markAsRead();
     }
   };
 
@@ -561,7 +636,7 @@ const App: React.FC = () => {
     return <PublicPackages
         packages={packages}
         addOns={addOns}
-        userProfile={profile}
+        userProfile={profile || DEFAULT_USER_PROFILE}
         showNotification={showNotification}
         setClients={setClients}
         setProjects={setProjects}
@@ -575,11 +650,27 @@ const App: React.FC = () => {
     />;
   }
   if (route.startsWith('#/public-booking')) {
-    const allDataForForm = { clients, projects, teamMembers, transactions, teamProjectPayments, teamPaymentRecords, pockets, profile, leads, rewardLedgerEntries, cards, assets, contracts, clientFeedback, notifications, socialMediaPosts, promoCodes, sops, packages, addOns };
-    return <PublicBookingForm {...allDataForForm} userProfile={profile} showNotification={showNotification} setClients={setClients} setProjects={setProjects} setTransactions={setTransactions} setCards={setCards} setPockets={setPockets} setPromoCodes={setPromoCodes} setLeads={setLeads} addNotification={addNotification} />;
+    return <PublicBookingForm 
+      packages={packages}
+      addOns={addOns}
+      userProfile={profile || DEFAULT_USER_PROFILE}
+      showNotification={showNotification}
+      setClients={setClients}
+      setProjects={setProjects}
+      setTransactions={setTransactions}
+      setCards={setCards}
+      setPockets={setPockets}
+      setPromoCodes={setPromoCodes}
+      setLeads={setLeads}
+      addNotification={addNotification}
+      cards={cards}
+      pockets={pockets}
+      promoCodes={promoCodes}
+      leads={leads}
+    />;
   }
   if (route.startsWith('#/public-lead-form')) {
-    return <PublicLeadForm setLeads={setLeads} userProfile={profile} showNotification={showNotification} />;
+    return <PublicLeadForm setLeads={setLeads} userProfile={profile || DEFAULT_USER_PROFILE} showNotification={showNotification} />;
   }
   
   if (route.startsWith('#/feedback')) return <PublicFeedbackForm setClientFeedback={setClientFeedback} />;
@@ -587,14 +678,51 @@ const App: React.FC = () => {
   if (route.startsWith('#/revision-form')) return <PublicRevisionForm projects={projects} teamMembers={teamMembers} onUpdateRevision={(pId, rId, data) => setProjects(prev => prev.map(p => p.id === pId ? {...p, revisions: p.revisions?.map(r => r.id === rId ? {...r, ...data, completedDate: new Date().toISOString()} : r)} : p))} />;
   if (route.startsWith('#/portal/')) {
     const accessId = route.split('/portal/')[1];
-    return <ClientPortal accessId={accessId} clients={clients} projects={projects} setClientFeedback={setClientFeedback} showNotification={showNotification} contracts={contracts} transactions={transactions} userProfile={profile} packages={packages} onClientConfirmation={(pId, stage) => setProjects(prev => prev.map(p => p.id === pId ? {...p, [`is${stage.charAt(0).toUpperCase() + stage.slice(1)}ConfirmedByClient`]: true} : p))} onClientSubStatusConfirmation={(pId, sub, note) => setProjects(prev => prev.map(p => p.id === pId ? {...p, confirmedSubStatuses: [...(p.confirmedSubStatuses || []), sub], clientSubStatusNotes: {...(p.clientSubStatusNotes || {}), [sub]: note}} : p))} onSignContract={(cId, sig, signer) => setContracts(prev => prev.map(c => c.id === cId ? {...c, [signer === 'vendor' ? 'vendorSignature' : 'clientSignature']: sig} : c))} />;
+    return <ClientPortal accessId={accessId} clients={clients} projects={projects} setClientFeedback={setClientFeedback} showNotification={showNotification} contracts={contracts} transactions={transactions} userProfile={profile || DEFAULT_USER_PROFILE} packages={packages} onClientConfirmation={(pId, stage) => setProjects(prev => prev.map(p => p.id === pId ? {...p, [`is${stage.charAt(0).toUpperCase() + stage.slice(1)}ConfirmedByClient`]: true} : p))} onClientSubStatusConfirmation={(pId, sub, note) => setProjects(prev => prev.map(p => p.id === pId ? {...p, confirmedSubStatuses: [...(p.confirmedSubStatuses || []), sub], clientSubStatusNotes: {...(p.clientSubStatusNotes || {}), [sub]: note}} : p))} onSignContract={(cId, sig, signer) => setContracts(prev => prev.map(c => c.id === cId ? {...c, [signer === 'vendor' ? 'vendorSignature' : 'clientSignature']: sig} : c))} />;
   }
   if (route.startsWith('#/freelancer-portal/')) {
      const accessId = route.split('/freelancer-portal/')[1];
-     return <FreelancerPortal accessId={accessId} teamMembers={teamMembers} projects={projects} teamProjectPayments={teamProjectPayments} teamPaymentRecords={teamPaymentRecords} rewardLedgerEntries={rewardLedgerEntries} showNotification={showNotification} onUpdateRevision={(pId, rId, data) => setProjects(prev => prev.map(p => p.id === pId ? {...p, revisions: p.revisions?.map(r => r.id === rId ? {...r, ...data, completedDate: new Date().toISOString()} : r)} : p))} sops={sops} userProfile={profile} />;
+     return <FreelancerPortal accessId={accessId} teamMembers={teamMembers} projects={projects} teamProjectPayments={teamProjectPayments} teamPaymentRecords={teamPaymentRecords} rewardLedgerEntries={rewardLedgerEntries} showNotification={showNotification} onUpdateRevision={(pId, rId, data) => setProjects(prev => prev.map(p => p.id === pId ? {...p, revisions: p.revisions?.map(r => r.id === rId ? {...r, ...data, completedDate: new Date().toISOString()} : r)} : p))} sops={sops} userProfile={profile || DEFAULT_USER_PROFILE} />;
   }
 
   if (!isAuthenticated) return <Login onLoginSuccess={handleLoginSuccess} users={users} />;
+
+  // Show loading state while data is being fetched
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-brand-bg">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-accent mx-auto mb-4"></div>
+          <p className="text-brand-text-secondary">Memuat data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state if data loading failed
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-brand-bg">
+        <div className="text-center">
+          <p className="text-brand-danger mb-4">Error: {error}</p>
+          <button onClick={() => window.location.reload()} className="button-primary">
+            Muat Ulang
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Ensure profile exists before rendering
+  if (!profile) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-brand-bg">
+        <div className="text-center">
+          <p className="text-brand-text-secondary">Profil tidak ditemukan. Silakan hubungi administrator.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="
